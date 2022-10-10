@@ -195,10 +195,16 @@ class FranchiseDataProvideSystemCrawler :
                 async with aiohttp.ClientSession() as session :
                     async with session.get(franchise.url) as resp :
                         resp_text, resp_url = await resp.text(), resp.url
+
+
+                self.data_queue.put(resp_url)
+
             except Exception as e :
                 print("connection failed on {}".format(franchise.url))
                 print("message :")
                 print(e)
+
+                self.data_queue.put(resp.url)
 
                 return
 
