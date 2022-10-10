@@ -85,7 +85,7 @@ class FranchiseDataProvideSystemCrawler :
             self.fetchFranchiseList(params={
                 "searchCondition" : "",
                 "searchKeyword" : "",
-                "column" : "brd",
+                "column" : "bfrd",
                 "selUpjong":"21",
                 "selIndus" : "",
                 "pageUnit" : str(num_fetch_at_once), # if i < times_to_fetch - 1 else str(num % num_fetch_at_once),

@@ -10,7 +10,7 @@ from task_bar import TaskBar
 
 
 if __name__ == "__main__" :
-    num_franchise_to_crawl = 10
+    num_franchise_to_crawl = 10000
 
     crawler_to_task_bar_queue = Queue()
 
@@ -32,6 +32,6 @@ if __name__ == "__main__" :
     )
     #result = asyncio.run(crawler.fetch(num=500))
 
-
     #pp.pprint(result)
     print(result)
+
