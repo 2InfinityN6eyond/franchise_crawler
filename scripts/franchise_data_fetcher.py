@@ -4,8 +4,7 @@ from bs4 import BeautifulSoup
 import asyncio
 import dateutil
 from urllib.parse import urlparse, parse_qs
-
-from requests import session
+from multiprocessing import Queue
 
 #from scripts.franchise import Franchise
 from franchise import Franchise
@@ -26,12 +25,16 @@ class FranchiseDataProvideSystemCrawler :
     """
     def __init__(
         self,
+        data_queue:Queue,
         list_url:str = "https://franchise.ftc.go.kr/mnu/00013/program/userRqst/list.do",
         view_usl:str = "https://franchise.ftc.go.kr/mnu/00013/program/userRqst/view.do",
         max_concurrency:int = 40,
     ) -> None :
         """
         args :
+
+            data_queue : multiprocessing.Queue
+
             list_url : str
                 가맹사업정보제공시스템에서 여러 가맹본부의 리스트를 보여주는 웹페이지 주소
 
@@ -43,6 +46,7 @@ class FranchiseDataProvideSystemCrawler :
 
         return : None
         """
+        self.data_queue = data_queue
         self.list_url = list_url
         self.view_url = view_usl
         self.max_concurrency = max_concurrency
@@ -73,6 +77,8 @@ class FranchiseDataProvideSystemCrawler :
         # 먼저 list_url에 접속해 한번에 num_fetch_at_once 만큼의 리스트를 얻고,
         # 그 리스트에 있는 각 가맹점의 view_url을 찾아서 모두 방문한다.
         # list_url에 표시할 수 있는 리스트 수의 제한이 있을 수 있으므로, 그걸 num_fetch_at_once로 제한한다.
+        if num < num_fetch_at_once :
+            num_fetch_at_once = num
         times_to_fetch = math.ceil(num / num_fetch_at_once)
 
         franchise_lists = [
@@ -82,10 +88,10 @@ class FranchiseDataProvideSystemCrawler :
                 "column" : "brd",
                 "selUpjong":"21",
                 "selIndus" : "",
-                "pageUnit" : str(num_fetch_at_once) if i < times_to_fetch - 1 else str(num % num_fetch_at_once),
-                "pageIndex" : str(i) 
+                "pageUnit" : str(num_fetch_at_once), # if i < times_to_fetch - 1 else str(num % num_fetch_at_once),
+                "pageIndex" : str(i + 1) 
             })
-            for i in range(times_to_fetch - 1)
+            for i in range(times_to_fetch)
         ]
 
         return await asyncio.gather(*franchise_lists)
