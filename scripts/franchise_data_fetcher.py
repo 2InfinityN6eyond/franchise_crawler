@@ -123,17 +123,25 @@ class FranchiseDataProvideSystemCrawler :
             view_url = self.view_url
 
         async with self.semaphore :
-            async with aiohttp.ClientSession() as session :
-                async with session.get(
-                    list_url,
-                    params = params
-                ) as resp :
-                    resp_text = await resp.text()
+            try :
+                async with aiohttp.ClientSession() as session :
+                    async with session.get(
+                        list_url,
+                        params = params
+                    ) as resp :
+                        resp_text, resp_url = await resp.text(), resp.url
+            except Exception as e :
+                print("connection failed on list_url {}".format(
+                    list_url
+                ))
+                print("message:")
+                print(e)
 
         try :
             table_rows = BeautifulSoup(resp_text, "lxml").table.tbody.findAll("tr")
-        except :
-            print("invalid list_url html")
+        except Exception as e :
+            print("parse failed on url {}".format(resp_url))
+            print(e)
             return
 
         franchises = list(map(
@@ -175,10 +183,18 @@ class FranchiseDataProvideSystemCrawler :
             params = params
         )
         """
-        async with self.semaphore :    
-            async with aiohttp.ClientSession() as session :
-                async with session.get(franchise.url) as resp :
-                    resp_text = await resp.text()
+
+        async with self.semaphore :
+            try :
+                async with aiohttp.ClientSession() as session :
+                    async with session.get(franchise.url) as resp :
+                        resp_text, resp_url = await resp.text(), resp.url
+            except Exception as e :
+                print("connection failed on {}".format(franchise.url))
+                print("message :")
+                print(e)
+
+                return
 
         franchise.parseFromHtml(resp_text)
         return franchise

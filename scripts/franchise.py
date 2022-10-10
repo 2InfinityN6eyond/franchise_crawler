@@ -117,7 +117,13 @@ class Franchise :
             # 다른 정보들을 파싱하는 부분도 만들어야 함..
             pass
 
-        except :
+        except Exception as e :
+            print("failed to parse html from view_url {}".format(
+                self.url
+            ))
+            print("message :")
+            print(e)
+
             self.parsing_succeed = False
 
 

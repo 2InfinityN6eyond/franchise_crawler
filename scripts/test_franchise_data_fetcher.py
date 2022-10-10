@@ -8,8 +8,10 @@ pp = PrettyPrinter(indent=4)
 
 crawler = FranchiseDataProvideSystemCrawler()
 
-loop = asyncio.get_event_loop()
-result = loop.run_until_complete(crawler.fetch(num = 5000))
+#loop = asyncio.get_event_loop()
+#result = loop.run_until_complete(crawler.fetch(num = 5000))
+
+result = asyncio.run(crawler.fetch(num=5000))
 
 pp.pprint(result)
 
