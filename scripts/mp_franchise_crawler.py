@@ -78,6 +78,8 @@ class FranchiseDataProvideSystemCrawler(Process) :
 
 
     async def run_loop(self) :
+        
+        print_debug("entering run_loop")
 
         while True :
             if not self.from_controller.empty() :
@@ -104,9 +106,7 @@ class FranchiseDataProvideSystemCrawler(Process) :
         override multiprocess.run()
 
         """
-        asyncio.run(self.run_loop)
-
-
+        asyncio.run(self.run_loop())
 
     def fetchListUrlAndConstructFranchise(
         self,
@@ -230,6 +230,8 @@ class FranchiseDataProvideSystemCrawler(Process) :
             params = params
         )
         """
+
+        print_debug("fetching_view")
 
         async with self.semaphore :
             try :

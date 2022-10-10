@@ -116,12 +116,13 @@ class Controller(Process) :
                         print("controller got unknown message")
                         print(data)
 
-
                 elif data["type"] == "franchise" :
                     if data["status"] == "success" :
                         self.franchises.append(data["franchise"])
 
                         self.to_taskbar_queue.put(1)
+
+                        print_debug(data)
 
                     elif data["status"] == "error" :
                         self.franchises_failed_to_parse.append(data["franchise"])
@@ -160,7 +161,6 @@ class Controller(Process) :
 
     def fetchViewUrlAndParse2Franchise(self,franchises:list) :
         """
-
         # 리턴받은 franchise 인스턴스들에 대해
                         # FranchiseDataProvideSystemCrawler.fetceViewUrlAndParse2Franchise()
                         # 를 호출하도록 데이터를 전송한다.
