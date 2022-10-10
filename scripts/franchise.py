@@ -215,8 +215,9 @@ class Franchise :
             self.parsing_succeed = False
 
     def __str__(self) -> str:
-        return "표시 번호:{}, 상호:{}, 영업 표지:{}, 등록번호:{}, 파싱_성공:{}\n".format(
-            self.num, self.name, self.sign, self.registration_id, self.parsing_succeed
+        return "파싱_성공:{0}, 번호:{1:4s}, 등록번호:{2:11s}, 상호:{3}, 영업 표지:{4}\n".format(
+            'T' if self.parsing_succeed else 'F',
+            self.num, self.registration_id, self.name, self.sign
         )
 
     def __repr__(self) -> str:
