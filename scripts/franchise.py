@@ -104,11 +104,8 @@ class Franchise :
                 특정 가맹본부의 정보를 공개하는 웹페이지 (view_url) 의 html 텍스트
 
         return : None
-        """
 
-
-        soup = BeautifulSoup(html_text, "lxml")
-
+        # deprecated
         try :
             # 각 프렌차이즈의 정보를 공개하는 웹페이지의 html에서 
             # 웹페이지의 "가맹본부 일반 현황" 에 해당하는 부분을 파싱한다.
@@ -125,6 +122,17 @@ class Franchise :
             print(e)
 
             self.parsing_succeed = False
+
+
+        """
+        soup = BeautifulSoup(html_text, "lxml")
+
+        # 각 프렌차이즈의 정보를 공개하는 웹페이지의 html에서 
+        # 웹페이지의 "가맹본부 일반 현황" 에 해당하는 부분을 파싱한다.
+        self.parseGeneralCurrentCondition(soup.form.find("div", "box_flop").table)
+
+        # 다른 정보들을 파싱하는 부분도 만들어야 함..
+        pass
 
 
     def parseGeneralCurrentCondition(

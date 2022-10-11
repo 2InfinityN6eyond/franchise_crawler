@@ -36,6 +36,6 @@ if __name__ == "__main__" :
         num = num_franchise_to_crawl
     ))
 
-
     #pp.pprint(result)
     print(result)
+

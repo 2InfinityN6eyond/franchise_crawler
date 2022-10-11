@@ -6,8 +6,7 @@ from multiprocessing import Queue
 from pprint import PrettyPrinter
 pp = PrettyPrinter(indent=4)
 
-from franchise import Franchise
-from franchise_crawler import FranchiseDataProvideSystemCrawler
+
 from task_bar import TaskBar
 from controller import Controller
 from logger import Logger
@@ -32,7 +31,7 @@ if __name__ == "__main__" :
         help = "maximum number of concurrent asynchronous execution"
     )
     parser.add_argument(
-        '--num_fetch_on_list_url',
+        '--list_size_of_list_url',
         type = int,
         default = 300,
         help = "number of"
@@ -43,30 +42,20 @@ if __name__ == "__main__" :
 
     print(args.num_franchise)
     print(args.max_concurrency)
-    print(args.num_fetch_on_list_url)
+    print(args.list_size_of_list_url)
 
-    num_franchise_to_crawl = 10
-
-    crawler_to_task_bar_queue = Queue()
-
+    controller_2_task_bar_queue = Queue()
     task_bar = TaskBar(
-        data_queue = crawler_to_task_bar_queue,
-        num_task = num_franchise_to_crawl
+        data_queue = controller_2_task_bar_queue,
+        num_task = args.num_franchise
     )
     task_bar.start()
 
-    crawler = FranchiseDataProvideSystemCrawler(
-        data_queue = crawler_to_task_bar_queue
+    controller = Controller(
+        to_taskbar_queue = controller_2_task_bar_queue,
+        to_database_queue = None,
+        max_concurrency = args.max_concurrency,
+        num_franchises_to_crawl = args.num_franchise,
+        list_size_of_list_url = args.list_size_of_list_url
     )
-
-    loop = asyncio.get_event_loop()
-    result = loop.run_until_complete(
-        crawler.fetch(
-            num = num_franchise_to_crawl
-        )
-    )
-    #result = asyncio.run(crawler.fetch(num=500))
-
-
-    #pp.pprint(result)
-    print(result)
+    controller.start()
