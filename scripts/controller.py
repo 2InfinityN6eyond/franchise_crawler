@@ -20,9 +20,11 @@ class Controller(Process) :
         to_taskbar_queue:Queue,
         to_database_queue:Queue,
         #num_crawler:int,
+        max_task_limit:int,
         max_concurrency:int,
         num_franchises_to_crawl:int,
         list_size_of_list_url:int,
+        verbose:bool = False
     ) -> None :
         """
         # multiple crawlers are not implemented yet!
@@ -63,18 +65,24 @@ class Controller(Process) :
         self.crawler = FranchiseDataProvideSystemCrawler(
             to_controller = self.from_crwler_queue,
             from_controller = self.to_crawler_queue,
+            max_task_limit = max_task_limit,
             max_concurrency = max_concurrency
         )
         self.crawler.start()
 
+        # list_url 웹페이지를 불러오기 실패할 경우.
+        # 그러한 경우 url 스트링을 저장했다가 이후에 다시 요청한다.
         self.list_urls_failed_to_parse = []
-        self.franchises_failed_to_parse = []
 
+        # view_url 웹페이지 파싱에 실패할 경우,
+        # 자신의 view_url을 담고 있는 Franchise 인스턴스를 저장했다가
+        # 이후에 다시 요청한다.
+        self.franchises_failed_to_parse = []
         self.franchises = []
 
+        self.verbose = verbose
+
     def run(self) :
-        
-        print_debug('controller started')
 
         self.fetchListUrl()
 
@@ -94,18 +102,25 @@ class Controller(Process) :
                         self.num_view_url_searched += self.list_size_of_list_url
                         self.fetchListUrl()
 
+                        self.to_taskbar_queue.put({
+                            "type" : "num_view_url_to_search",
+                            "num_view_url_to_search" : len(data["data"])
+                        })
+
                     elif data["status"] == "error" :
-                        self.list_urls_failed_to_parse.append(
-                            data["params"]
-                        )
+                        pass
+                        #self.list_urls_failed_to_parse.append(
+                        #    data["list_url"]
+                        #)
+                        pass
 
                     elif data["status"] == "end" :
                         # generator로 개선할 여지가 많음
                         self.list_url_end_reached = True
-                        
+
                     else :
                         print("controller got unknown message")
-                        print(data)                
+                        print(data)      
 
                 elif data["type"] == "view_url" :
                     if data["status"] == "success" :
@@ -120,12 +135,21 @@ class Controller(Process) :
                     if data["status"] == "success" :
                         self.franchises.append(data["franchise"])
 
-                        self.to_taskbar_queue.put(1)
+                        self.to_taskbar_queue.put({
+                            "type" : "view_url_parsed",
+                            "view_url" : data["franchise"].url
+                        })
 
-                        print_debug(data)
-
+                        if self.verbose :
+                            print(data["franchise"])
                     elif data["status"] == "error" :
-                        self.franchises_failed_to_parse.append(data["franchise"])
+                        # crawler가 franchise object에 저장된 
+                        # self.franchises_failed_to_parse.append(data["franchise"])
+                        
+                        # 그냥 재시도한다.
+                        self.fetchViewUrlAndParse2Franchise(
+                            franchises=[data["franchise"]]
+                        )
 
                     else :
                         print("controller got unknown message")
@@ -134,7 +158,8 @@ class Controller(Process) :
                 else :
                     print("controller got unknown message")
                     print(data)
-
+ 
+ 
     def fetchListUrl(self) :
         """
         balance work, send data to crawler
@@ -171,7 +196,6 @@ class Controller(Process) :
                             }),
                             data["data"]
                         ))
-
         """
 
         if not isinstance(franchises, list) :
