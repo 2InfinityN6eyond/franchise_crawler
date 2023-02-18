@@ -12,7 +12,6 @@ from controller import Controller
 from logger import Logger
 
 
-
 if __name__ == "__main__" :
 
     parser = argparse.ArgumentParser(
@@ -67,4 +66,4 @@ if __name__ == "__main__" :
         list_size_of_list_url = args.list_size_of_list_url,
         verbose = True if args.verbose else False
     )
-    controller.start()
+    asyncio.run(controller.start())

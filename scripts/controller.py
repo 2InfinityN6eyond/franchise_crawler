@@ -1,14 +1,13 @@
 from multiprocessing import Process, Queue
 from os import rename
-
+import asyncio
 from franchise import Franchise
-#from franchise_crawler import FranchiseDataProvideSystemCrawler
-from mp_franchise_crawler import FranchiseDataProvideSystemCrawler
+from franchise_crawler import FranchiseDataProvideSystemCrawler
 from logger import Logger
 
 print_debug = print
 
-class Controller(Process) :
+class Controller :
     """
     FranchiseDataProviderSystemCrawler를 이용해 크롤링을 진행하고,
     로깅, 테스크바 표시 등을 처리한다.
@@ -16,41 +15,15 @@ class Controller(Process) :
     """
     def __init__(
         self,
-        #logger:Logger,
         to_taskbar_queue:Queue,
         to_database_queue:Queue,
-        #num_crawler:int,
         max_task_limit:int,
         max_concurrency:int,
         num_franchises_to_crawl:int,
         list_size_of_list_url:int,
         verbose:bool = False
     ) -> None :
-        """
-        # multiple crawlers are not implemented yet!
-
-        # queue for communicate with crawlers.  required by crawler initializer.
-        self.from_crawlers_queue = [Queue() for i in range(num_crawler)]
-        self.to_crawlers_queue = [Queue() for i in range(num_crawler)]
-        # initialize crawlers
-        self.crawlers = list(map(
-            lambda from_crawler, to_crawler : FranchiseDataProvideSystemCrawler(
-                to_controller = from_crawler,
-                from_controller = to_crawler,
-                max_concurrency = max_concurrency
-            ),
-            self.from_crawlers_queue,
-            self.to_crawlers_queue
-        ))
-        # start crawlers
-        list(map(
-            lambda crawler : crawler.start(),
-            self.crawlers
-        ))
-        """
-
-        super(Controller, self).__init__()
-
+      
         self.to_taskbar_queue = to_taskbar_queue
         self.to_database_queue = to_database_queue
         
@@ -68,8 +41,6 @@ class Controller(Process) :
             max_task_limit = max_task_limit,
             max_concurrency = max_concurrency
         )
-        self.crawler.start()
-
         # list_url 웹페이지를 불러오기 실패할 경우.
         # 그러한 경우 url 스트링을 저장했다가 이후에 다시 요청한다.
         self.list_urls_failed_to_parse = []
@@ -82,7 +53,7 @@ class Controller(Process) :
 
         self.verbose = verbose
 
-    def run(self) :
+    async def start(self) :
 
         self.fetchListUrl()
 
@@ -159,6 +130,8 @@ class Controller(Process) :
                     print("controller got unknown message")
                     print(data)
  
+            self.crawler.step()
+            await asyncio.sleep(0.05)
  
     def fetchListUrl(self) :
         """

@@ -1,13 +1,28 @@
 import math
+import requests
 import aiohttp
 from bs4 import BeautifulSoup
 import asyncio
 import dateutil
 from urllib.parse import urlparse, parse_qs
-from multiprocessing import Queue
 
-#from scripts.franchise import Franchise
 from franchise import Franchise
+
+def printAsyncioInfo() :
+    tasks = asyncio.all_tasks()
+    num_whole_tasks = len(tasks)
+    num_curr_tasks = len(list(filter(
+        lambda task : not task.done(),
+        tasks
+    )))
+    num_done_tasks = len(list(filter(
+        lambda task : task.done(),
+        tasks
+    )))
+    print(f"{num_whole_tasks} tasks total, {num_curr_tasks} acitve, {num_done_tasks} done")
+
+
+print_debug = print
 
 class FranchiseDataProvideSystemCrawler :
     """
@@ -25,10 +40,12 @@ class FranchiseDataProvideSystemCrawler :
     """
     def __init__(
         self,
-        data_queue:Queue,
+        to_controller,
+        from_controller,
         list_url:str = "https://franchise.ftc.go.kr/mnu/00013/program/userRqst/list.do",
-        view_usl:str = "https://franchise.ftc.go.kr/mnu/00013/program/userRqst/view.do",
+        view_url:str = "https://franchise.ftc.go.kr/mnu/00013/program/userRqst/view.do",
         max_concurrency:int = 40,
+        max_task_limit:int = 100
     ) -> None :
         """
         args :
@@ -44,63 +61,114 @@ class FranchiseDataProvideSystemCrawler :
             max_concurrency : int
                 동시 비동기 실행 인스턴스 수 제한.
 
+            max_task_limit : int
+
         return : None
         """
-        self.data_queue = data_queue
+
+        self.from_controller = from_controller
+        self.to_controller = to_controller
+
         self.list_url = list_url
-        self.view_url = view_usl
+        self.view_url = view_url
+        self.max_task_limit = max_task_limit
         self.max_concurrency = max_concurrency
         self.semaphore = asyncio.Semaphore(self.max_concurrency)
 
-    async def fetch(
-        self,
-        num = -1,
-        num_fetch_at_once = 200
-    ) -> list :
-        """
-        crawling site and fetch html data from site.
-        fetch html table, and extract information,
-
-        args :
-            num :
-                number of franchise data to fetch.
-                given -1, fetch every data available. -> not implemented yet
-
-        return :
-            list of Franchise object.
-            Of length "num"
-        """
+        self.list_url_params = {
+            "searchCondition" : "",
+            "searchKeyword" : "",
+            "column" : "brd",
+            "selUpjong": 21,
+            "selIndus" : "",
+            "pageUnit" : 0,
+            "pageIndex" : 0
+        }
         
-        assert num > 0
+        self.view_url_params = {}
 
-        # 예를 들어, 1000개의 가맹점 정보를 파싱하려면, 
-        # 먼저 list_url에 접속해 한번에 num_fetch_at_once 만큼의 리스트를 얻고,
-        # 그 리스트에 있는 각 가맹점의 view_url을 찾아서 모두 방문한다.
-        # list_url에 표시할 수 있는 리스트 수의 제한이 있을 수 있으므로, 그걸 num_fetch_at_once로 제한한다.
-        if num < num_fetch_at_once :
-            num_fetch_at_once = num
-        times_to_fetch = math.ceil(num / num_fetch_at_once)
+        # controller 에서 요청을 보내는 족족 코푸틴을 실행시키다 보면 동시에 너무 많은 
+        # 요청을 보내서, 처리시간이 늦어져 페이지 연결이 끊어질 확룔이 높아진다.
+        # controller에서 요청을 보내면 우선 큐에 담고,
+        # 현재 실행중인 task 갯수가 max_task_limit을 넘지 않도록 조절하며 실행시킨다.
+        self.list_url_fetch_call_queue = []
+        self.view_url_fetch_call_queue = []
 
-        franchise_lists = [
-            self.fetchFranchiseList(params={
-                "searchCondition" : "",
-                "searchKeyword" : "",
-                "column" : "bfrd",
-                "selUpjong":"21",
-                "selIndus" : "",
-                "pageUnit" : str(num_fetch_at_once), # if i < times_to_fetch - 1 else str(num % num_fetch_at_once),
-                "pageIndex" : str(i + 1) 
-            })
-            for i in range(times_to_fetch)
-        ]
 
-        return await asyncio.gather(*franchise_lists)
-    
-    async def fetchFranchiseList(
+    def step(self) :
+        if not self.from_controller.empty() :
+            data = self.from_controller.get()
+            if data["instruction"] == "fetch_list_url" :        
+                self.list_url_fetch_call_queue.append(data)
+
+            if data["instruction"] == "fetch_view_url" :
+                self.view_url_fetch_call_queue.append(data)
+
+        if len(asyncio.all_tasks()) < self.max_task_limit :
+            if len(self.list_url_fetch_call_queue) > 0 :
+                data = self.list_url_fetch_call_queue.pop(0)
+                asyncio.ensure_future(
+                    self.fetchListUrlAndConstructFranchise(
+                        list_size_of_list_url = data["list_size_of_list_url"],
+                        page_index = data["page_index"]
+                    )
+                )
+            if len(self.view_url_fetch_call_queue) > 0 :
+                data = self.view_url_fetch_call_queue.pop(0)
+                asyncio.ensure_future(
+                    self.fetceViewUrlAndParse2Franchise(
+                        franchise = data["franchise"]
+                    )
+                )
+
+
+    '''
+    async def run_loop(self) :
+        #print_debug("entering run_loop")
+        while True :
+            if not self.from_controller.empty() :
+                data = self.from_controller.get()
+                if data["instruction"] == "fetch_list_url" :        
+                    self.list_url_fetch_call_queue.append(data)
+
+                if data["instruction"] == "fetch_view_url" :
+                    self.view_url_fetch_call_queue.append(data)
+
+            if len(asyncio.all_tasks()) < self.max_task_limit :
+                if len(self.list_url_fetch_call_queue) > 0 :
+                    data = self.list_url_fetch_call_queue.pop(0)
+                    asyncio.ensure_future(
+                        self.fetchListUrlAndConstructFranchise(
+                            list_size_of_list_url = data["list_size_of_list_url"],
+                            page_index = data["page_index"]
+                        )
+                    )
+                if len(self.view_url_fetch_call_queue) > 0 :
+                    data = self.view_url_fetch_call_queue.pop(0)
+                    asyncio.ensure_future(
+                        self.fetceViewUrlAndParse2Franchise(
+                            franchise = data["franchise"]
+                        )
+                    )
+
+            await asyncio.sleep(0.05)
+    '''
+
+    '''
+    def run(self) :
+        """
+        override multiprocess.run()
+
+        """
+        asyncio.run(self.run_loop())
+    '''
+
+    async def fetchListUrlAndConstructFranchise(
         self,
         list_url:str = None,
         view_url:str = None,
-        params:dict = None
+        list_size_of_list_url:int = 100,
+        page_index:int = 0
     ) :
         """
         download html of list_url, extract view_url for each franchise,
@@ -115,10 +183,6 @@ class FranchiseDataProvideSystemCrawler :
                 url of view_url
                 default : None. in this case,use self.view_url instead
 
-            params : dict
-                url query parameters 
-                default : None
-
         return :
             list of Franchise object
         """
@@ -128,28 +192,98 @@ class FranchiseDataProvideSystemCrawler :
         if view_url is None :
             view_url = self.view_url
 
+        url_query_param = self.list_url_params.copy()
+        url_query_param["pageUnit"] = list_size_of_list_url
+        url_query_param["pageIndex"] = page_index
+
+
         async with self.semaphore :
             try :
                 async with aiohttp.ClientSession() as session :
                     async with session.get(
                         list_url,
-                        params = params
+                        params = url_query_param
                     ) as resp :
-                        resp_text, resp_url = await resp.text(), resp.url
+                        resp_url = resp.url
+                        resp_text = await resp.text()                
+                """
+                resp = requests.get(
+                    list_url,
+                    params = url_query_param
+                )
+                """
+
             except Exception as e :
                 print("connection failed on list_url {}".format(
                     list_url
                 ))
-                print("message:")
-                print(e)
+                print(f"message : {e}")
+
+                # 원래는 controller에게 보고하고 끝내려 했지만,
+                """
+                self.to_controller.put({
+                    "status" : "error",
+                    "type" : "list_url",
+                    "list_url" : resp_url
+                })
+                """
+                # 구현이 뭔가 깔끔하지 못해서 그냥 자기 자신을 다시 call한다.
+                print("retrying..")
+                asyncio.ensure_future(
+                    self.fetchListUrlAndConstructFranchise(
+                        list_url = list_url,
+                        view_url = view_url,
+                        list_size_of_list_url = list_size_of_list_url,
+                        page_index = page_index
+                    )
+                )
+                
+                return
 
         try :
-            table_rows = BeautifulSoup(resp_text, "lxml").table.tbody.findAll("tr")
+            soup = BeautifulSoup(resp_text, "lxml")
+
+            # check if page ends.
+            if len(soup.findAll("div", "emptyNote")) > 0 :
+                self.to_controller.put({
+                    "status" : "end",
+                    "type"   : "list_url"
+                })
+                return
+
+            table_rows = soup.table.tbody.findAll("tr")
         except Exception as e :
-            print("parse failed on url {}".format(resp_url))
-            print(e)
+            print("parse failed on url {}".format(resp.url))
+            print(f"message : {e}")
+            
+            # 원래는 controller에게 보고한 뒤 끝내려 했지만,
+            """
+            self.to_controller.put({
+                "status" : "error",
+                "type"   : "list_url",
+                "list_url" : resp_url
+                #"params" : {
+                #    "list_size_of_list_url" : list_size_of_list_url,
+                #    "page_index" : page_index
+                #}
+            })
+            """
+            # 구현이 뭔가 깔끔하지 못해서 그냥 자기 자신을 다시 call한다.
+            print("retrying..")
+            asyncio.ensure_future(
+                self.fetchListUrlAndConstructFranchise(
+                    list_url = list_url,
+                    view_url = view_url,
+                    list_size_of_list_url = list_size_of_list_url,
+                    page_index = page_index
+                )
+            )
+            
+
+
             return
 
+        # Franchise 를 construct할 때 에러가 발생하는 경우가 있는가?
         franchises = list(map(
             lambda row_tag : Franchise(
                 num = row_tag.find("td").text.strip(),
@@ -158,17 +292,13 @@ class FranchiseDataProvideSystemCrawler :
             table_rows
         ))
 
+        self.to_controller.put({
+            "status" : "success",
+            "type"   : "list_url",
+            "data"   : franchises
+        })
 
-        franchises = [
-            self.fetchFranchiseView(
-                franchise = franciese
-            )
-            for franciese in franchises
-        ]
-
-        return await asyncio.gather(*franchises)
-            
-    async def fetchFranchiseView(
+    async def fetceViewUrlAndParse2Franchise(
         self,
         franchise:Franchise
     ) -> Franchise :
@@ -190,23 +320,46 @@ class FranchiseDataProvideSystemCrawler :
         )
         """
 
+        #print_debug("fetching_view")
+
         async with self.semaphore :
             try :
                 async with aiohttp.ClientSession() as session :
                     async with session.get(franchise.url) as resp :
                         resp_text, resp_url = await resp.text(), resp.url
 
-
-                self.data_queue.put(resp_url)
-
             except Exception as e :
                 print("connection failed on {}".format(franchise.url))
-                print("message :")
-                print(e)
+                print(f"message : {e}")
 
-                self.data_queue.put(resp.url)
+                self.to_controller.put({
+                    #"type" : "view_url",
+                    "type" : "franchise",
+                    "status" : "error",
+                    "franchise" : franchise
+                })
 
                 return
 
-        franchise.parseFromHtml(resp_text)
-        return franchise
+        try : # html에 문제가 있어 파싱이 안될수도 있음
+            franchise.parseFromHtml(resp_text)
+            data = {
+                "status" : "success",
+                "type"   : "franchise",
+                "franchise" : franchise
+            }
+
+        except Exception as e :
+            franchise.parsing_succeed = False
+            print("view_url parse failed : {}".format(
+                franchise.url
+            ))
+            print(f"message : {e}")
+            
+            data = {
+                "status" : "error",
+                "type"   : "franchise",
+                "franchise" : franchise
+            }
+
+        self.to_controller.put(data)
